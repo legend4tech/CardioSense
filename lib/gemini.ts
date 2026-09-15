@@ -1,12 +1,12 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = process.env.GROQ_API_KEY;
 
 if (!apiKey) {
-  throw new Error("GEMINI_API_KEY environment variable is not defined");
+  throw new Error("GROQ_API_KEY environment variable is not defined");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+const groq = new Groq({ apiKey });
 
 const SYSTEM_PROMPT = `You are an expert Clinical Decision Support System (CDSS) designed for a hospital's internal software. 
 You act as an advanced medical inference engine.
@@ -64,23 +64,24 @@ Analyze the above and return the JSON response.`;
 }
 
 export const diagnosePatient = async (patientData: PatientInput) => {
-  const model = genAI.getGenerativeModel({
-    model: "gemini-flash-latest",
-    generationConfig: {
-      temperature: 0.1, // Low temp = consistent, deterministic output
-      responseMimeType: "application/json", // Force JSON output natively supported in Gemini 1.5
-    },
-    systemInstruction: SYSTEM_PROMPT, 
+  const userMessage = buildUserMessage(patientData);
+  
+  const completion = await groq.chat.completions.create({
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userMessage }
+    ],
+    model: "openai/gpt-oss-120b", // Fast, smart, and totally free
+    temperature: 0.1,
+    response_format: { type: "json_object" }, // Forces valid JSON output
   });
 
-  const userMessage = buildUserMessage(patientData);
-  const result = await model.generateContent(userMessage);
+  const text = completion.choices[0]?.message?.content || "";
   
-  const text = result.response.text();
   try {
     return JSON.parse(text);
   } catch (error) {
-    console.error("Failed to parse Gemini response as JSON:", text);
+    console.error("Failed to parse response as JSON:", text);
     throw new Error("AI returned invalid JSON.");
   }
 };
